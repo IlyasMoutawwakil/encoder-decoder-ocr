@@ -1,21 +1,27 @@
 from x_transformers import Decoder, TransformerWrapper, AutoregressiveWrapper, NonAutoregressiveWrapper
+import torch
 
 
 class AutoregressiveDecoder(AutoregressiveWrapper):
     def __init__(self,
-                 num_tokens=1000,
-                 max_seq_len=256,
-                 pad_token_id=0,
                  decoder_config=dict(
                      dim=384,
                      depth=4,
                      heads=8,
-                     cross_attend=True,
-                     ff_glu=False,
-                     attn_on_attn=False,
-                     use_scalenorm=False,
-                     rel_pos_bias=False
+                     cross_attend=True,  # enables cross attention using the context argument, default is True
+                     ff_glu=False,  # use Gated Linear Units in the feed forward layer, default is False
+                     attn_on_attn=False,  # use attention on attention, default is False
+                     use_scalenorm=False,  # use ScaleNorm instead of LayerNorm, default is False
+                     rel_pos_bias=False,  # use relative positional bias, default is False
                  ),
+
+                 num_tokens=100,
+                 max_seq_len=256,
+
+                 bos_token_id=0,
+                 eos_token_id=1,
+                 pad_token_id=2,
+
                  *args,
                  **kwargs):
 
@@ -25,18 +31,31 @@ class AutoregressiveDecoder(AutoregressiveWrapper):
             attn_layers=Decoder(**decoder_config)
         )
 
+        self.bos_token_id = bos_token_id
+        self.eos_token_id = eos_token_id
+        self.pad_token_id = pad_token_id
+
         super().__init__(net=net, pad_value=pad_token_id, *args, **kwargs)
+
+    def generate(self, seq_len, context, *args, **kwargs):
+
+        start_tokens = torch.full((context.size(0), 1), self.bos_token_id)
+
+        return super().generate(
+            start_tokens=start_tokens,
+            context=context,
+
+            seq_len=seq_len,
+            eos_token=self.eos_token_id,
+
+            *args,
+            **kwargs
+        )
 
 
 if __name__ == '__main__':
-    import torch
-    from x_transformers.autoregressive_wrapper import top_k, top_p, top_a
 
-    num_tokens = 1000
-    max_seq_len = 256
-    
-    pad_token = 0
-
+    # decoder architecture config
     decoder_config = dict(
         dim=384,
         depth=4,
@@ -48,31 +67,43 @@ if __name__ == '__main__':
         rel_pos_bias=False
     )
 
-    auto_reg_decoder = AutoregressiveDecoder(
+    # auto regressive wrapper architecture config
+    num_tokens = 100
+    max_seq_len = 256
+
+    # auto regressive wrapper generation config
+    bos_token_id = 0
+    eos_token_id = 1
+    pad_token_id = 2
+
+    # create decoder
+    decoder = AutoregressiveDecoder(
+        decoder_config=decoder_config,
+
         num_tokens=num_tokens,
         max_seq_len=max_seq_len,
-        pad_token_id=pad_token,
 
-        decoder_config=decoder_config
+        bos_token_id=bos_token_id,
+        eos_token_id=eos_token_id,
+        pad_token_id=pad_token_id,
     )
 
-    bos_token = 1
-    eos_token = 2
-    seq_len = 300
+    # mandatory generation inputs
+    seq_len = 96
+    sample_context = torch.randn(2, 100, decoder_config['dim'])
 
-    generation_strategy = top_k  # top_k, top_p, top_a
+    # optional generation inputs
+    from x_transformers.autoregressive_wrapper import top_k, top_p, top_a
+    optional_inputs = dict(
+        filter_logits_fn=top_k,
+        temperature=1.0,
+    )
 
-    sample_context = torch.randn(1, 1, decoder_config['dim'])
-    sample_start_tokens = torch.full((1, 1), bos_token)
-
-    auto_reg_output = auto_reg_decoder.generate(
-        start_tokens=sample_start_tokens,
+    # generation pass
+    sample_outputs = decoder.generate(
+        seq_len=seq_len,
         context=sample_context,
 
-        seq_len=seq_len,
-        eos_token=eos_token,
-
-        filter_logits_fn=generation_strategy
+        **optional_inputs
     )
-
-    print(auto_reg_output.shape)
+    print(sample_outputs.shape)

@@ -8,14 +8,13 @@ class VisionEncoderDecoder(torch.nn.Module):
         self.encoder = encoder
         self.decoder = decoder
 
-    def forward(self, features, target, mask=None):
-
+    def forward(self, features, targets, mask=None):
         context = self.encoder(features)
 
         loss = self.decoder(
-            target,
+            targets,
             mask=mask,
-            context=context
+            context=context,
         )
 
         return loss, context
@@ -24,13 +23,11 @@ class VisionEncoderDecoder(torch.nn.Module):
     def generate(
             self,
             seq_len,
-            bos_token_id,
-            eos_token_id,
             features=None,
             context=None,
-
+            *args,
+            **kwargs
     ):
-
         if features is None and context is None:
             raise ValueError(
                 "Either features or context should be provided")
@@ -38,18 +35,11 @@ class VisionEncoderDecoder(torch.nn.Module):
         if context is None:
             context = self.encoder(features)
 
-        start_tokens = torch.full(
-            fill_value=bos_token_id,
-            size=(features.size(0), 1),
-            device=features.device,
-        )
-
         generated = self.decoder.generate(
-            start_tokens=start_tokens,
-            context=context,
-
             seq_len=seq_len,
-            eos_token=eos_token_id,
+            context=context,
+            *args,
+            **kwargs
         )
 
         return generated
@@ -57,11 +47,10 @@ class VisionEncoderDecoder(torch.nn.Module):
 
 if __name__ == '__main__':
 
-    import torch
-
     from encoder import SwinTransformerEncoder
     from decoder import AutoregressiveDecoder
 
+    # encoder architecture config
     height, width = 128, 640
     channels = 3
 
@@ -72,7 +61,8 @@ if __name__ == '__main__':
     depths = [2, 6, 2]
     num_heads = [6, 12, 24]
 
-    swin_encoder = SwinTransformerEncoder(
+    # create encoder
+    encoder = SwinTransformerEncoder(
         img_size=(height, width),
         patch_size=patch_size,
         in_chans=channels,
@@ -82,6 +72,7 @@ if __name__ == '__main__':
         window_size=window_size,
     )
 
+    # decoder architecture config
     decoder_config = dict(
         dim=384,
         depth=4,
@@ -93,37 +84,48 @@ if __name__ == '__main__':
         rel_pos_bias=False
     )
 
+    # auto regressive wrapper architecture config
     num_tokens = 100
     max_seq_len = 256
+
+    # auto regressive wrapper generation config
     bos_token_id = 0
     eos_token_id = 1
     pad_token_id = 2
-    seq_len = 10
 
+    # create decoder
     decoder = AutoregressiveDecoder(
+        decoder_config=decoder_config,
+
         num_tokens=num_tokens,
         max_seq_len=max_seq_len,
-        pad_token_id=pad_token_id,
 
-        decoder_config=decoder_config
+        bos_token_id=bos_token_id,
+        eos_token_id=eos_token_id,
+        pad_token_id=pad_token_id,
     )
 
+    # create vision encoder decoder
     model = VisionEncoderDecoder(
-        encoder=swin_encoder,
+        encoder=encoder,
         decoder=decoder,
     )
 
-    features = torch.randn(1, channels, height, width)
-    target = torch.randint(0, seq_len, (1, max_seq_len))
+    # vision encoder decoder generation inputs
+    seq_len = 96
+    features = torch.randn(2, channels, height, width)
+    targets = torch.randint(0, num_tokens, (2, seq_len))
 
-    loss, context = model(features, target)
-    print(loss)
+    # vision encoder decoder forward pass
+    loss, context = model(
+        features=features,
+        targets=targets
+    )
+    print(loss, context.shape)
 
+    # vision encoder decoder generation pass
     generated = model.generate(
-        seq_len,
-        bos_token_id,
-        eos_token_id,
+        seq_len=seq_len,
         features=features
     )
-
-    print(generated)
+    print(generated.shape, targets.shape)
