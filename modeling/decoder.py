@@ -31,16 +31,17 @@ class AutoregressiveDecoder(AutoregressiveWrapper):
             attn_layers=Decoder(**decoder_config)
         )
 
+        super().__init__(
+            net=net,
+            pad_value=pad_token_id,
+            *args, **kwargs
+        )
+
         self.bos_token_id = bos_token_id
         self.eos_token_id = eos_token_id
-        self.pad_token_id = pad_token_id
-
-        super().__init__(net=net, pad_value=pad_token_id, *args, **kwargs)
 
     def generate(self, seq_len, context, *args, **kwargs):
-
         start_tokens = torch.full((context.size(0), 1), self.bos_token_id)
-
         return super().generate(
             start_tokens=start_tokens,
             context=context,
