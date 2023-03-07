@@ -24,9 +24,6 @@ def clean_hf_dataset(dataset):
         remove_columns=['paragraph']
     )
     dataset = dataset.filter(
-        lambda x: len(x['paragraph']) > 0
-    )
-    dataset = dataset.filter(
         lambda x: len(re.sub('\s', '', x['paragraph'])) > 0
     )
 

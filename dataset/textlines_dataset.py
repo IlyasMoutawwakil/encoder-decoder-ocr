@@ -23,7 +23,8 @@ class TextLinesDataset(VisionDataset):
         
         text = get_random_cut(
             paragraph,
-            max_length=self.tokenizer.model_max_length - 2, # -2 for the [BOS] and [EOS] tokens
+            # - 2 for the [BOS] and [EOS] tokens
+            max_length=self.tokenizer.model_max_length - 2,
         )
         
         image = generate_line(text)
@@ -31,7 +32,7 @@ class TextLinesDataset(VisionDataset):
         features = torch.tensor(
             np.array(image)
         ).permute(2, 0, 1) / 127.5 - 1
-                
+        
         tokens = self.tokenizer(
             text,
             padding="max_length",
@@ -86,14 +87,12 @@ if __name__ == '__main__':
     print(sample["target"].shape, sample["target"].dtype)
     print(sample["mask"].shape, sample["mask"].dtype)
 
-    # decode the target
-    print(tokenizer.decode(sample["target"], skip_special_tokens=True))
-
     # show the image
 
     for i in range(10):
         # get a sample from the dataset
         sample = dataset[i]
+        print(tokenizer.decode(sample["target"], skip_special_tokens=True))
         plt.imshow((sample["features"].permute(1, 2, 0) + 1) / 2)
         plt.show()
         

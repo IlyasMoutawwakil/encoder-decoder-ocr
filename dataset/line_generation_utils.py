@@ -5,7 +5,7 @@ from trdg.data_generator import FakeTextDataGenerator
 FONTS = load_fonts('fr')
 COLORS = [
     "#000000",
-    "#FFFFFF",
+    # "#FFFFFF", # white is not a good color for text
     "#FF0000",
     "#00FF00",
     "#0000FF",
@@ -22,7 +22,7 @@ FIXED_PARAMS = dict(
     orientation=0,
     name_format=0,
     output_bboxes=0,
-    stroke_width=0,
+
     alignment=0,
     out_dir=None,
     extension=None,
@@ -39,6 +39,7 @@ def generate_line(text):
         font=random.choice(FONTS),
         text_color=random.choice(COLORS),
         stroke_fill=random.choice(COLORS),
+        stroke_width=random.randint(0, 3),  # stroke width in pixels
         size=random.randint(64, 128),  # height in pixels
         # 0: Gaussian Noise, 1: Plain white, 2: Quasicrystal, 3: Pictures
         background_type=random.randint(0, 2),
@@ -57,6 +58,9 @@ def generate_line(text):
         # if true, tight crop the image to the text
         fit=random.choice([True, False]),
     )
+
+    while random_params['text_color'] == random_params['stroke_fill']:
+        random_params['stroke_fill'] = random.choice(COLORS)
 
     image = FakeTextDataGenerator.generate(
         text=text,
