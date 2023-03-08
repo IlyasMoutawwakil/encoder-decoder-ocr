@@ -1,48 +1,50 @@
 from torchvision.datasets import VisionDataset
 import numpy as np
+import random
 import torch
 
-from text_cleaning_utils import get_random_cut, clean_hf_dataset
-from line_generation_utils import generate_line
+from dataset.text_cleaning_utils import get_random_cut
+from dataset.line_generation_utils import generate_line
 
 
-class TextLinesDataset(VisionDataset):
+class TextLineDataset(VisionDataset):
     def __init__(
             self,
             tokenizer,
-            paragraphs,
+            dataset,
     ):
         self.tokenizer = tokenizer
-        self.paragraphs = paragraphs
+        self.dataset = dataset
 
     def __len__(self):
-        return len(self.paragraphs)
+        return len(self.dataset)
 
     def __getitem__(self, idx):
-        paragraph = self.paragraphs[idx]['paragraph']
-        
-        text = get_random_cut(
-            paragraph,
+        line = random.choice(self.dataset[idx]['lines'])   
+        line = get_random_cut(
+            line,
             # - 2 for the [BOS] and [EOS] tokens
             max_length=self.tokenizer.model_max_length - 2,
         )
-        
-        image = generate_line(text)
-        
+        tokens = self.tokenizer(
+            line,
+            return_tensors="pt",
+            padding="max_length",
+            truncation=True,
+            return_attention_mask=True,
+            return_token_type_ids=False,
+        )
+        target = tokens["input_ids"].squeeze(0)
+        mask = tokens["attention_mask"].squeeze(0)
+
+        try:
+            image = generate_line(line)
+        except Exception as e:
+            self.__getitem__(idx)
+
         features = torch.tensor(
             np.array(image)
         ).permute(2, 0, 1) / 127.5 - 1
-        
-        tokens = self.tokenizer(
-            text,
-            padding="max_length",
-            return_attention_mask=True,
-            return_token_type_ids=False,
-            return_tensors="pt",
-        )
-
-        target = tokens["input_ids"].squeeze(0)
-        mask = tokens["attention_mask"].squeeze(0)
 
         return {
             "features": features,
@@ -54,17 +56,12 @@ class TextLinesDataset(VisionDataset):
 if __name__ == '__main__':
     from transformers import AutoTokenizer
     import matplotlib.pyplot as plt
-    import datasets as ds
     
-    paragraphs_dataset = ds.load_dataset(
-        "asi/wikitext_fr", 
-        "wikitext-72",
-        split="train"
-    )
-    
-    paragraphs_dataset = clean_hf_dataset(
-        paragraphs_dataset
-    )
+    dataset = [
+        {
+            "lines": ["Ceci est un test ààà 1", "Ceci est un test ççç 2", "Ceci est un test éééé 3", ],
+        }
+    ] * 100
     
     # get a generic tokenizer
     tokenizer = AutoTokenizer.from_pretrained(
@@ -73,9 +70,9 @@ if __name__ == '__main__':
     )
 
     # create a dataset
-    dataset = TextLinesDataset(
+    dataset = TextLineDataset(
         tokenizer=tokenizer,
-        paragraphs=paragraphs_dataset,
+        dataset=dataset,
 
     )
 

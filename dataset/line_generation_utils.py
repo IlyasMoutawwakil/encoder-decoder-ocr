@@ -42,25 +42,25 @@ def generate_line(text):
         stroke_width=random.randint(0, 3),  # stroke width in pixels
         size=random.randint(64, 128),  # height in pixels
         # 0: Gaussian Noise, 1: Plain white, 2: Quasicrystal, 3: Pictures
-        background_type=random.randint(0, 2),
+        # 3 is not interesting for us
+        background_type=random.choice([0, 1, 2]),
         # 0: None (Default), 1: Sine wave, 2: Cosine wave, 3:Random
-        distorsion_type=random.randint(0, 4),
+        distorsion_type=random.choice([0, 1, 2, 3]),
         # 0: Vertical (Up and down), 1: Horizontal (Left and Right), 2: Both
-        distorsion_orientation=random.randint(0, 3),
+        distorsion_orientation=random.choice([0, 1, 2]),
         # if true, the skewing angle is random between -skewing_angle and +skewing_angle
         random_skew=random.choice([True, False]),
         # if true, the blur is random between 0 and blur
         random_blur=random.choice([True, False]),
-        space_width=random.randint(1, 3),  # words level spacing multiplier
+        # multiplied by normal words level spacing
+        space_width=random.randint(1, 3),
         # characters level spacing in pixels
         character_spacing=random.randint(1, 10),
-        margins=(random.randint(0, 10) for _ in range(4)),  # margins in pixels
+        # margins in pixels
+        margins=(random.randint(0, 10) for _ in range(4)), 
         # if true, tight crop the image to the text
         fit=random.choice([True, False]),
     )
-
-    while random_params['text_color'] == random_params['stroke_fill']:
-        random_params['stroke_fill'] = random.choice(COLORS)
 
     image = FakeTextDataGenerator.generate(
         text=text,
