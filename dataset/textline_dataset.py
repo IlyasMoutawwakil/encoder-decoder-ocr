@@ -40,7 +40,7 @@ class TextLineDataset(VisionDataset):
         try:
             image = generate_line(line)
         except Exception as e:
-            self.__getitem__(idx)
+            return self.__getitem__(idx)
 
         features = torch.tensor(
             np.array(image)
