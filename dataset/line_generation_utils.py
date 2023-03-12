@@ -81,4 +81,4 @@ def generate_line(text):
         **FIXED_PARAMS
     )
 
-    return np.array(image)
+    return image

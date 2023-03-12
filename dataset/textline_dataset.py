@@ -9,21 +9,29 @@ except:
     from text_cleaning_utils import get_random_cut
     from line_generation_utils import generate_line
 
+# expected format of the dataset
 DUMMY_DATASET = [
     {
-        "lines": [f"Ceci est un test ààà {i}", f"Ceci est un test ççç {i}", f"Ceci est un test éééé {i}", ],
+        "lines": [
+            f"Ceci est un test ààà {i}", 
+            f"Ceci est un test ççç {i}", 
+            f"Ceci est un test ééé {i}"
+        ],
     } for i in range(100)
 ]
 
 class TextLineDataset(VisionDataset):
     def __init__(
             self,
-            tokenizer,
             dataset,
+            tokenizer,
+            transform,
     ):
-        self.tokenizer = tokenizer
-        self.dataset = dataset
 
+        self.dataset = dataset
+        self.tokenizer = tokenizer
+        self.transform = transform
+        
     def __len__(self):
         return len(self.dataset)
 
@@ -50,9 +58,7 @@ class TextLineDataset(VisionDataset):
         except Exception as e:
             return self.__getitem__(idx)
 
-        features = torch.tensor(
-            image / 255.0,
-        )
+        features = self.transform(image)
 
         return {
             "features": features,
@@ -62,18 +68,29 @@ class TextLineDataset(VisionDataset):
 
 
 if __name__ == '__main__':
+    from torchvision.transforms import Compose, Resize, Grayscale, ToTensor, Normalize
     from transformers import AutoTokenizer
     import matplotlib.pyplot as plt
-
+    
+    # create a tokenizer
     tokenizer = AutoTokenizer.from_pretrained(
         "distilbert-base-cased", 
         model_max_length=100
     )
+    
+    # create a transform
+    transform = Compose([
+        Resize((128, 640)),
+        Grayscale(),
+        ToTensor(),
+        Normalize((0.5,), (0.5,)),
+    ])
 
     # create a dataset
     dataset = TextLineDataset(
-        tokenizer=tokenizer,
         dataset=DUMMY_DATASET,
+        tokenizer=tokenizer,
+        transform=transform,
     )
 
     # get a sample from the dataset
@@ -84,12 +101,11 @@ if __name__ == '__main__':
     print(sample["target"].shape, sample["target"].dtype)
     print(sample["mask"].shape, sample["mask"].dtype)
 
-    # show the image
-
+    # show the images and the text
     for i in range(10):
         # get a sample from the dataset
         sample = dataset[i]
         print(tokenizer.decode(sample["target"], skip_special_tokens=True))
-        plt.imshow(sample["features"])
+        plt.imshow(sample["features"].permute(1, 2, 0))
         plt.show()
         
