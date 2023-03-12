@@ -1,8 +1,21 @@
 import random
+import numpy as np
 from trdg.utils import load_fonts
 from trdg.data_generator import FakeTextDataGenerator
 
 FONTS = load_fonts('fr')
+# filter out fonts names that contains "__"
+FONTS = [font for font in FONTS if "__" not in font]
+REMOVE_FONTS = [
+    "/home/ilyas/micromamba/envs/transformers-ocr/lib/python3.9/site-packages/trdg/fonts/latin/Capture_it_2.ttf",
+    "/home/ilyas/micromamba/envs/transformers-ocr/lib/python3.9/site-packages/trdg/fonts/latin/BEBAS___.ttf",
+    "/home/ilyas/micromamba/envs/transformers-ocr/lib/python3.9/site-packages/trdg/fonts/latin/SEASRN__.ttf",
+    "/home/ilyas/micromamba/envs/transformers-ocr/lib/python3.9/site-packages/trdg/fonts/latin/Capture_it.ttf",
+    "/home/ilyas/micromamba/envs/transformers-ocr/lib/python3.9/site-packages/trdg/fonts/latin/Walkway_Oblique_SemiBold.ttf",
+]
+
+FONTS = [font for font in FONTS if font not in REMOVE_FONTS]
+
 COLORS = [
     "#000000",
     # "#FFFFFF", # white is not a good color for text
@@ -57,7 +70,7 @@ def generate_line(text):
         # characters level spacing in pixels
         character_spacing=random.randint(1, 10),
         # margins in pixels
-        margins=(random.randint(0, 10) for _ in range(4)), 
+        margins=(random.randint(0, 10) for _ in range(4)),
         # if true, tight crop the image to the text
         fit=random.choice([True, False]),
     )
@@ -68,4 +81,4 @@ def generate_line(text):
         **FIXED_PARAMS
     )
 
-    return image
+    return np.array(image)

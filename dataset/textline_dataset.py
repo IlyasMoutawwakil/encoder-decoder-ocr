@@ -1,11 +1,19 @@
 from torchvision.datasets import VisionDataset
-import numpy as np
 import random
 import torch
 
-from dataset.text_cleaning_utils import get_random_cut
-from dataset.line_generation_utils import generate_line
+try:
+    from dataset.text_cleaning_utils import get_random_cut
+    from dataset.line_generation_utils import generate_line
+except:
+    from text_cleaning_utils import get_random_cut
+    from line_generation_utils import generate_line
 
+DUMMY_DATASET = [
+    {
+        "lines": [f"Ceci est un test ààà {i}", f"Ceci est un test ççç {i}", f"Ceci est un test éééé {i}", ],
+    } for i in range(100)
+]
 
 class TextLineDataset(VisionDataset):
     def __init__(
@@ -43,8 +51,8 @@ class TextLineDataset(VisionDataset):
             return self.__getitem__(idx)
 
         features = torch.tensor(
-            np.array(image)
-        ).permute(2, 0, 1) / 127.5 - 1
+            image / 255.0,
+        )
 
         return {
             "features": features,
@@ -56,14 +64,7 @@ class TextLineDataset(VisionDataset):
 if __name__ == '__main__':
     from transformers import AutoTokenizer
     import matplotlib.pyplot as plt
-    
-    dataset = [
-        {
-            "lines": ["Ceci est un test ààà 1", "Ceci est un test ççç 2", "Ceci est un test éééé 3", ],
-        }
-    ] * 100
-    
-    # get a generic tokenizer
+
     tokenizer = AutoTokenizer.from_pretrained(
         "distilbert-base-cased", 
         model_max_length=100
@@ -72,12 +73,11 @@ if __name__ == '__main__':
     # create a dataset
     dataset = TextLineDataset(
         tokenizer=tokenizer,
-        dataset=dataset,
-
+        dataset=DUMMY_DATASET,
     )
 
     # get a sample from the dataset
-    sample = dataset[55]
+    sample = dataset[0]
 
     # print the shapes and dtypes of the sample
     print(sample["features"].shape, sample["features"].dtype)
@@ -90,6 +90,6 @@ if __name__ == '__main__':
         # get a sample from the dataset
         sample = dataset[i]
         print(tokenizer.decode(sample["target"], skip_special_tokens=True))
-        plt.imshow((sample["features"].permute(1, 2, 0) + 1) / 2)
+        plt.imshow(sample["features"])
         plt.show()
         
