@@ -3,18 +3,22 @@ import torch
 
 class VisionEncoderDecoder(torch.nn.Module):
     def __init__(self, encoder, decoder):
+
         super().__init__()
 
         self.encoder = encoder
         self.decoder = decoder
 
-    def forward(self, features, targets, mask=None):
-        context = self.encoder(features)
+    def forward(self, features, target, **kwargs):
+
+        context = self.encoder(
+            features=features
+        )
 
         loss = self.decoder(
-            targets,
-            mask=mask,
+            target=target,
             context=context,
+            **kwargs
         )
 
         return loss, context
@@ -22,23 +26,23 @@ class VisionEncoderDecoder(torch.nn.Module):
     @torch.no_grad()
     def generate(
             self,
-            seq_len,
+            seq_len=None,
             features=None,
             context=None,
-            *args,
             **kwargs
     ):
         if features is None and context is None:
             raise ValueError(
                 "Either features or context should be provided")
 
-        if context is None:
-            context = self.encoder(features)
+        elif context is None:
+            context = self.encoder(
+                features=features,
+            )
 
         generated = self.decoder.generate(
             seq_len=seq_len,
             context=context,
-            *args,
             **kwargs
         )
 
@@ -86,7 +90,7 @@ if __name__ == '__main__':
 
     # auto regressive wrapper architecture config
     num_tokens = 100
-    max_seq_len = 256
+    max_seq_len = 128
 
     # auto regressive wrapper generation config
     bos_token_id = 0
@@ -113,19 +117,19 @@ if __name__ == '__main__':
 
     # vision encoder decoder generation inputs
     seq_len = 96
-    features = torch.randn(2, channels, height, width)
-    targets = torch.randint(0, num_tokens, (2, seq_len))
+    sample_features = torch.randn(2, channels, height, width)
+    sample_target = torch.randint(0, num_tokens, (2, seq_len))
 
     # vision encoder decoder forward pass
-    loss, context = model(
-        features=features,
-        targets=targets
+    loss, _ = model(
+        features=sample_features,
+        target=sample_target,
     )
-    print(loss, context.shape)
+    print(loss)
 
     # vision encoder decoder generation pass
     generated = model.generate(
         seq_len=seq_len,
-        features=features
+        features=sample_features
     )
-    print(generated.shape, targets.shape)
+    print(generated.shape)

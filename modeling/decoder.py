@@ -22,7 +22,6 @@ class AutoregressiveDecoder(AutoregressiveWrapper):
                  eos_token_id=1,
                  pad_token_id=2,
 
-                 *args,
                  **kwargs):
 
         net = TransformerWrapper(
@@ -34,23 +33,36 @@ class AutoregressiveDecoder(AutoregressiveWrapper):
         super().__init__(
             net=net,
             pad_value=pad_token_id,
-            *args, **kwargs
+            **kwargs,
         )
 
         self.bos_token_id = bos_token_id
         self.eos_token_id = eos_token_id
 
-    def generate(self, seq_len, context, *args, **kwargs):
+    def forward(self, target, **kwargs):
+
+        return super().forward(
+            target,
+            **kwargs,
+        )
+
+    @torch.no_grad()
+    def generate(self, seq_len=None, context=None, **kwargs):
+
+        if seq_len is None:
+            seq_len = self.max_seq_len
+
+        if context is None:
+            raise ValueError('context must be provided to generate')
+
         start_tokens = torch.full((context.size(0), 1), self.bos_token_id)
+
         return super().generate(
-            start_tokens=start_tokens,
-            context=context,
-
             seq_len=seq_len,
+            start_tokens=start_tokens,
             eos_token=self.eos_token_id,
-
-            *args,
-            **kwargs
+            context=context,
+            **kwargs,
         )
 
 
@@ -65,12 +77,12 @@ if __name__ == '__main__':
         ff_glu=False,
         attn_on_attn=False,
         use_scalenorm=False,
-        rel_pos_bias=False
+        rel_pos_bias=False,
     )
 
     # auto regressive wrapper architecture config
-    num_tokens = 100
-    max_seq_len = 256
+    num_tokens = 256
+    max_seq_len = 128
 
     # auto regressive wrapper generation config
     bos_token_id = 0
@@ -89,12 +101,20 @@ if __name__ == '__main__':
         pad_token_id=pad_token_id,
     )
 
-    # mandatory generation inputs
+    # mandatory decoder inputs
     seq_len = 96
-    sample_context = torch.randn(2, 100, decoder_config['dim'])
+    sample_context = torch.randn(2, 320, 384)
+    sample_target = torch.randint(0, num_tokens, (2, seq_len))
+
+    # auto regressive wrapper forward pass
+    loss = decoder(
+        target=sample_target,
+        context=sample_context,
+    )
+    print(loss)
 
     # optional generation inputs
-    from x_transformers.autoregressive_wrapper import top_k, top_p, top_a
+    from x_transformers.autoregressive_wrapper import top_k
     optional_inputs = dict(
         filter_logits_fn=top_k,
         temperature=1.0,

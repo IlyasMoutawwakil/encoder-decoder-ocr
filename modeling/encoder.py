@@ -15,7 +15,7 @@ if __name__ == '__main__':
 
     # encoder architecture config
     height, width = 128, 640
-    channels = 3
+    channels = 1
 
     patch_size = 4
     window_size = 8

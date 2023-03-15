@@ -42,16 +42,14 @@ class TextLineDataset(VisionDataset):
             # - 2 for the [BOS] and [EOS] tokens
             max_length=self.tokenizer.model_max_length - 2,
         )
-        tokens = self.tokenizer(
+        target = self.tokenizer.encode(
             line,
             return_tensors="pt",
             padding="max_length",
             truncation=True,
-            return_attention_mask=True,
+            return_attention_mask=False,
             return_token_type_ids=False,
-        )
-        target = tokens["input_ids"].squeeze(0)
-        mask = tokens["attention_mask"].squeeze(0)
+        ).squeeze(0)
 
         try:
             image = generate_line(line)
@@ -63,7 +61,6 @@ class TextLineDataset(VisionDataset):
         return {
             "features": features,
             "target": target,
-            "mask": mask,
         }
 
 
@@ -99,7 +96,8 @@ if __name__ == '__main__':
     # print the shapes and dtypes of the sample
     print(sample["features"].shape, sample["features"].dtype)
     print(sample["target"].shape, sample["target"].dtype)
-    print(sample["mask"].shape, sample["mask"].dtype)
+    print(sample["target"])
+    # print(sample["mask"].shape, sample["mask"].dtype)
 
     # show the images and the text
     for i in range(10):

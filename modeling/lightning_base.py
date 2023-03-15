@@ -1,18 +1,19 @@
+import random
 import pytorch_lightning as pl
 import evaluate
 import torch
-import timm
 
 CER = evaluate.load("cer")
 ACC = evaluate.load("accuracy")
 
 
 class LightningBase(pl.LightningModule):
-    def __init__(self, model, optimizer_config, scheduler_config, *args, **kwargs):
+    def __init__(self, tokenizer, model, optimizer_config, scheduler_config, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        self.tokenizer = tokenizer
         self.model = model
-        
+
         self.optimizer_config = optimizer_config
         self.scheduler_config = scheduler_config
 
@@ -30,16 +31,19 @@ class LightningBase(pl.LightningModule):
             **self.scheduler_config['params'],
         )
 
-        return [optimizer], [scheduler]
+        return [optimizer], [{"scheduler": scheduler, "interval": "step"}]
 
-    def forward(self, features, targets, mask=None):
+    def lr_scheduler_step(self, scheduler, *args, **kwargs):
+        scheduler.step(self.global_step)
+
+    def forward(self, features=None, target=None, mask=None):
         return self.model(
             features=features,
-            targets=targets,
+            target=target,
             mask=mask
         )
 
-    def generate(self, seq_len, features=None, context=None):
+    def generate(self, seq_len=None, features=None, context=None):
         return self.model.generate(
             seq_len=seq_len,
             features=features,
@@ -47,12 +51,12 @@ class LightningBase(pl.LightningModule):
         )
 
     def training_step(self, batch, batch_num):
-        features, (targets, masks) = batch
+        features = batch['features']
+        target = batch['target']
 
-        train_loss, context = self(
+        train_loss, _ = self(
             features=features,
-            targets=targets,
-            mask=masks
+            target=target,
         )
 
         self.log(
@@ -63,49 +67,40 @@ class LightningBase(pl.LightningModule):
         return train_loss
 
     def validation_step(self, batch, batch_num):
-        features, (targets, masks) = batch
+        features = batch['features']
+        target = batch['target']
 
         val_loss, context = self(
             features=features,
-            targets=targets,
-            mask=masks
+            target=target,
         )
 
-        seq_len = self.model.decoder.max_seq_len
         generated = self.generate(
-            seq_len=seq_len,
             context=context,
         )
 
-        # pad generated and targets to the same length
-        max_len = max(generated.shape[1], targets.shape[1])
-        generated = torch.nn.functional.pad(
-            input=generated,
-            pad=(0, max_len - generated.shape[1]),
-            value=self.model.decoder.pad_token_id
-        )
-
-        targets = torch.nn.functional.pad(
-            input=targets,
-            pad=(0, max_len - targets.shape[1]),
-            value=self.model.decoder.pad_token_id
-        )
+        val_loss = val_loss.item()
 
         val_acc = ACC.compute(
-            predictions=generated,
-            references=targets,
-        )
+            predictions=generated.flatten(),
+            references=target.flatten(),
+        )["accuracy"]
+
+        generated = self.tokenizer.batch_decode(
+            generated, skip_special_tokens=True)
+        target = self.tokenizer.batch_decode(
+            target, skip_special_tokens=True)
 
         val_cer = CER.compute(
-            predictions=self.tokenizer.decode(generated),
-            references=self.tokenizer.decode(targets),
+            predictions=generated,
+            references=target,
         )
 
         return {
             'features': features,
-            'targets': targets,
+            'target': target,
             'generated': generated,
-            
+
             'val_loss': val_loss,
             'val_acc': val_acc,
             'val_cer': val_cer,
@@ -113,13 +108,45 @@ class LightningBase(pl.LightningModule):
 
     def validation_epoch_end(self, outputs):
 
-        features = torch.cat([o['features'] for o in outputs], dim=0)
-        targets = torch.cat([o['targets'] for o in outputs], dim=0)
-        generated = torch.cat([o['generated'] for o in outputs], dim=0)
+        wrong_cases = []
+        right_cases = []
 
-        val_loss = torch.stack([o['val_loss'] for o in outputs]).mean()
-        val_acc = torch.stack([o['val_acc'] for o in outputs]).mean()
-        val_cer = torch.stack([o['val_cer'] for o in outputs]).mean()
+        for output in outputs:
+            features = output['features']
+            target = output['target']
+            generated = output['generated']
+
+            for i, (t, g) in enumerate(zip(target, generated)):
+                if t != g:
+                    wrong_cases.append((t, g))
+                else:
+                    right_cases.append(features[i])
+
+        if len(wrong_cases) > 9:
+            wrong_cases = random.sample(wrong_cases, 9)
+        else:
+            pass
+
+        if len(right_cases) > 9:
+            right_cases = random.sample(right_cases, 9)
+        else:
+            pass
+
+        custom_log = "## WRONG CASES:"
+        custom_log += '\n\n'
+        custom_log += '\n\n'.join(
+            [f"- Ground Truth: {w1}\n- Prediction:&emsp;&ensp;{w2}" for w1, w2 in wrong_cases])
+
+        self.logger.experiment.add_text(
+            tag='wrong-cases-{i}', text_string=custom_log, global_step=self.global_step)
+
+        for i, image in enumerate(right_cases):
+            self.logger.experiment.add_image(
+                tag=f"right-cases-{i}", img_tensor=image, global_step=self.global_step, dataformats="CHW")
+
+        val_loss = sum([o['val_loss'] for o in outputs]) / len(outputs)
+        val_acc = sum([o['val_acc'] for o in outputs]) / len(outputs)
+        val_cer = sum([o['val_cer'] for o in outputs]) / len(outputs)
 
         self.log(
             name='val_loss', value=val_loss, on_step=False,
@@ -244,18 +271,17 @@ if __name__ == '__main__':
 
     # create one batch
     features = torch.randn(2, 3, 128, 640)
-    targets = torch.randint(0, 100, (2, 256))
-    masks = None
+    target = torch.randint(0, 100, (2, 256))
 
     # forward pass
-    loss, context = lightning_model(features, targets, masks)
+    loss, context = lightning_model(features, target)
 
     # generate
     generated = lightning_model.generate(
         seq_len=256,
         context=context,
     )
-    
+
     print(loss)
     print(context.shape)
     print(generated.shape)
