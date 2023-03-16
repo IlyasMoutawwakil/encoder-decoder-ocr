@@ -55,7 +55,11 @@ class AutoregressiveDecoder(AutoregressiveWrapper):
         if context is None:
             raise ValueError('context must be provided to generate')
 
-        start_tokens = torch.full((context.size(0), 1), self.bos_token_id)
+        start_tokens = torch.full(
+            (context.size(0), 1),
+            fill_value=self.bos_token_id,
+            device=context.device
+        )
 
         return super().generate(
             seq_len=seq_len,

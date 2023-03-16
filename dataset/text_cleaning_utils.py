@@ -1,43 +1,46 @@
 import re
 import random
 
-NUMBERS = """0123456789"""
-ALPHABET = """ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"""
-
-SPECIAL_ALPHABET = """ÀÂÆÇÉÈÊËÎÏÔŒÙÛÜŸàâæçéèêëîïôœùûüÿ"""
+NUMBERS = "0123456789"
 SPECIAL_CHARCTERS = """!"#$£€%§&½'°()*+,-./:;<=>?@[\]^_`{|}~“”‘’«» """
 
-ALL_CHARACTERS = NUMBERS + ALPHABET + SPECIAL_ALPHABET + SPECIAL_CHARCTERS
+LATIN_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" + "abcdefghijklmnopqrstuvwxyz"
+EXTRA_LATIN_ALPHABET = "ÀÂÆÇÉÈÊËÎÏÔŒÙÛÜŸ" + "àâæçéèêëîïôœùûüÿ"
+
+FRENCH_CHARACTERS = NUMBERS + SPECIAL_CHARCTERS + \
+    LATIN_ALPHABET + EXTRA_LATIN_ALPHABET
 
 
 def preprocess_line(text):
     # does the same as clean_df but for a single text
-    text = re.sub(f"[^{ALL_CHARACTERS}]", '', text)
+    text = re.sub(f"[^{FRENCH_CHARACTERS}]", '', text)
     text = re.sub('\s+', ' ', text)
     text = text.strip()
     return text
+
 
 def preprocess_paragraph(text):
     lines = []
     for line in text.split('\n'):
         line = preprocess_line(line)
         if len(line) > 0:
-            lines.append(line)  
+            lines.append(line)
     return lines
 
-def preprocess_wikipedia_dataset(dataset):
+
+def preprocess_wikipedia_dataset(dataset, text_column='text', num_proc=4):
     dataset = dataset.map(
         lambda x: {
-            'lines': preprocess_paragraph(x['text'])
+            'lines': preprocess_paragraph(x[text_column])
         },
-        remove_columns=['text'],
-        num_proc=4,
+        remove_columns=[text_column],
+        num_proc=num_proc,
     )
 
     return dataset
 
 
-def get_random_cut(text, max_length):
+def get_random_cut(text, max_length=96):
     if len(text) <= max_length:
         return text
 

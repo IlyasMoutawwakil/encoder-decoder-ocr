@@ -1,6 +1,5 @@
 from torchvision.datasets import VisionDataset
 import random
-import torch
 
 try:
     from dataset.text_cleaning_utils import get_random_cut
@@ -8,17 +7,6 @@ try:
 except:
     from text_cleaning_utils import get_random_cut
     from line_generation_utils import generate_line
-
-# expected format of the dataset
-DUMMY_DATASET = [
-    {
-        "lines": [
-            f"Ceci est un test ààà {i}", 
-            f"Ceci est un test ççç {i}", 
-            f"Ceci est un test ééé {i}"
-        ],
-    } for i in range(100)
-]
 
 class TextLineDataset(VisionDataset):
     def __init__(
@@ -39,7 +27,7 @@ class TextLineDataset(VisionDataset):
         line = random.choice(self.dataset[idx]['lines'])   
         line = get_random_cut(
             line,
-            # - 2 for the [BOS] and [EOS] tokens
+            # minus two for the [BOS] and [EOS] tokens
             max_length=self.tokenizer.model_max_length - 2,
         )
         target = self.tokenizer.encode(
@@ -54,7 +42,7 @@ class TextLineDataset(VisionDataset):
         try:
             image = generate_line(line)
         except Exception as e:
-            return self.__getitem__(idx)
+            return self[idx]
 
         features = self.transform(image)
 
@@ -69,8 +57,20 @@ if __name__ == '__main__':
     from transformers import AutoTokenizer
     import matplotlib.pyplot as plt
     
+    # expected format of the dataset
+    dummy_dataset = [
+        {
+            "lines": [
+                f"Ceci est un test ààà {i}", 
+                f"Ceci est un test ççç {i}", 
+                f"Ceci est un test ééé {i}"
+            ],
+        } for i in range(100)
+    ]
+    
+    
     # create a tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(
+    dummy_tokenizer = AutoTokenizer.from_pretrained(
         "distilbert-base-cased", 
         model_max_length=100
     )
@@ -85,8 +85,8 @@ if __name__ == '__main__':
 
     # create a dataset
     dataset = TextLineDataset(
-        dataset=DUMMY_DATASET,
-        tokenizer=tokenizer,
+        dataset=dummy_dataset,
+        tokenizer=dummy_tokenizer,
         transform=transform,
     )
 

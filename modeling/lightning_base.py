@@ -132,17 +132,15 @@ class LightningBase(pl.LightningModule):
         else:
             pass
 
-        custom_log = "## WRONG CASES:"
-        custom_log += '\n\n'
-        custom_log += '\n\n'.join(
+        custom_log = '\n\n'.join(
             [f"- Ground Truth: {w1}\n- Prediction:&emsp;&ensp;{w2}" for w1, w2 in wrong_cases])
 
         self.logger.experiment.add_text(
-            tag='wrong-cases-{i}', text_string=custom_log, global_step=self.global_step)
+            tag='wrong-cases', text_string=custom_log, global_step=self.global_step)
 
         for i, image in enumerate(right_cases):
             self.logger.experiment.add_image(
-                tag=f"right-cases-{i}", img_tensor=image, global_step=self.global_step, dataformats="CHW")
+                tag=f"right-cases", img_tensor=image, global_step=self.global_step, dataformats="CHW")
 
         val_loss = sum([o['val_loss'] for o in outputs]) / len(outputs)
         val_acc = sum([o['val_acc'] for o in outputs]) / len(outputs)
