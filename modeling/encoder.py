@@ -6,9 +6,9 @@ class SwinTransformerEncoder(SwinTransformerV2):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def forward(self, features):
-        outputs = self.forward_features(features)
-        return outputs
+    def forward(self, pixels):
+        x = self.forward_features(pixels)
+        return x
 
 
 if __name__ == '__main__':
@@ -20,12 +20,12 @@ if __name__ == '__main__':
     patch_size = 4
     window_size = 8
 
-    embed_dim = 96
+    embed_dim = 96 # will be multiplied by 4, will check later
     depths = [2, 6, 2]
     num_heads = [6, 12, 24]
 
     # create encoder
-    encoder = SwinTransformerEncoder(
+    swin_encoder = SwinTransformerEncoder(
         img_size=(height, width),
         patch_size=patch_size,
         in_chans=channels,
@@ -36,8 +36,8 @@ if __name__ == '__main__':
     )
 
     # mandatory encoder inputs
-    sample_inputs = torch.randn(2, channels, height, width)
+    sample_pixels = torch.randn(2, channels, height, width)
 
     # encoder forward pass
-    sample_outputs = encoder(sample_inputs)
+    sample_outputs = swin_encoder(sample_pixels)
     print(sample_outputs.shape)
