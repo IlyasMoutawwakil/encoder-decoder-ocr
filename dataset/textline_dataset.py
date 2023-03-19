@@ -1,56 +1,56 @@
+try:
+    from dataset.line_generation_utils import generate_line
+except ImportError:
+    from line_generation_utils import generate_line
+
 from torchvision.datasets import VisionDataset
 import random
 
-try:
-    from dataset.text_cleaning_utils import get_random_cut
-    from dataset.line_generation_utils import generate_line
-except:
-    from text_cleaning_utils import get_random_cut
-    from line_generation_utils import generate_line
 
 class TextLineDataset(VisionDataset):
-    def __init__(
-            self,
-            dataset,
-            tokenizer,
-            transform,
-    ):
-
+    def __init__(self, dataset, transform, model_max_length):
+        super().__init__(root=None)
+        
         self.dataset = dataset
-        self.tokenizer = tokenizer
         self.transform = transform
+        self.model_max_length = model_max_length
         
     def __len__(self):
         return len(self.dataset)
 
     def __getitem__(self, idx):
-        line = random.choice(self.dataset[idx]['lines'])   
-        line = get_random_cut(
+        line = random.choice(self.dataset[idx]['lines'])
+        text = get_random_cut(
             line,
             # minus two for the [BOS] and [EOS] tokens
-            max_length=self.tokenizer.model_max_length - 2,
+            max_length=self.model_max_length - 2,
         )
-        target = self.tokenizer.encode(
-            line,
-            return_tensors="pt",
-            padding="max_length",
-            truncation=True,
-            return_attention_mask=False,
-            return_token_type_ids=False,
-        ).squeeze(0)
 
-        try:
-            image = generate_line(line)
-        except Exception as e:
-            return self[idx]
-
-        features = self.transform(image)
+        image = generate_line(line)
+        pixels = self.transform(image)
 
         return {
-            "features": features,
-            "target": target,
+            "pixels": pixels,
+            "text": text,
         }
 
+def get_random_cut(text, max_length=96):
+    if len(text) <= max_length:
+        return text
+
+    else:
+        words = text.split(' ')
+        first_word_index = random.randint(0, len(words) - 1)
+        new_text = words[first_word_index]
+
+        for i in range(first_word_index + 1, len(words)):
+            candidate = new_text + ' ' + words[i]
+            if len(candidate) <= max_length:
+                new_text = candidate
+            else:
+                break
+
+        return new_text
 
 if __name__ == '__main__':
     from torchvision.transforms import Compose, Resize, Grayscale, ToTensor, Normalize
@@ -67,7 +67,6 @@ if __name__ == '__main__':
             ],
         } for i in range(100)
     ]
-    
     
     # create a tokenizer
     dummy_tokenizer = AutoTokenizer.from_pretrained(
@@ -86,24 +85,15 @@ if __name__ == '__main__':
     # create a dataset
     dataset = TextLineDataset(
         dataset=dummy_dataset,
-        tokenizer=dummy_tokenizer,
         transform=transform,
+        model_max_length=dummy_tokenizer.model_max_length,
     )
-
-    # get a sample from the dataset
-    sample = dataset[0]
-
-    # print the shapes and dtypes of the sample
-    print(sample["features"].shape, sample["features"].dtype)
-    print(sample["target"].shape, sample["target"].dtype)
-    print(sample["target"])
-    # print(sample["mask"].shape, sample["mask"].dtype)
 
     # show the images and the text
     for i in range(10):
         # get a sample from the dataset
         sample = dataset[i]
-        print(tokenizer.decode(sample["target"], skip_special_tokens=True))
-        plt.imshow(sample["features"].permute(1, 2, 0))
+        print(sample["text"])
+        plt.imshow(sample["pixels"].permute(1, 2, 0))
         plt.show()
         
