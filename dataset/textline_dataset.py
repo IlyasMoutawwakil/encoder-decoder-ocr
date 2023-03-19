@@ -1,7 +1,7 @@
 try:
-    from dataset.line_generation_utils import generate_line
+    from dataset.line_generator import generate_line
 except ImportError:
-    from line_generation_utils import generate_line
+    from dataset.line_generator import generate_line
 
 from torchvision.datasets import VisionDataset
 import random

@@ -44,10 +44,12 @@ class WikipediaTextLineDataModule(L.LightningDataModule):
             "wikipedia", self.name, split="train[-10%:]")
 
         train_dataset = preprocess_dataset(
-            train_dataset, text_column='text', num_proc=self.num_workers, characters=self.characters
+            train_dataset, text_column='text',
+            num_proc=self.num_workers, characters=self.characters
         )
         val_dataset = preprocess_dataset(
-            val_dataset, text_column='text', num_proc=self.num_workers
+            val_dataset, text_column='text',
+            num_proc=self.num_workers, characters=self.characters
         )
 
         self.train_dataset = TextLineDataset(
