@@ -1,2 +1,2 @@
-# transformers-ocr
-Implementing, training and optimizing transformer OCR architectures.
+# encoder-decoder-ocr
+Implementing and training Transformer OCR architectures.
