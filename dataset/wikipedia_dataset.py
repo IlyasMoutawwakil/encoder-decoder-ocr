@@ -6,25 +6,16 @@ except ImportError:
 from torch.utils.data import DataLoader
 from functools import partial
 import datasets as ds
-import lightning as L
+import pytorch_lightning as pl
 import torch
 import re
 
-NUMBERS = "0123456789"
-SPECIAL_CHARCTERS = """!"#$£€%§&½'°()*+,-./:;<=>?@[\]^_`{|}~“”‘’«» """
 
-LATIN_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" + "abcdefghijklmnopqrstuvwxyz"
-EXTRA_LATIN_ALPHABET = "ÀÂÆÇÉÈÊËÎÏÔŒÙÛÜŸ" + "àâæçéèêëîïôœùûüÿ"
-
-FRENCH_CHARACTERS = NUMBERS + SPECIAL_CHARCTERS + \
-    LATIN_ALPHABET + EXTRA_LATIN_ALPHABET
-
-
-class WikipediaTextLineDataModule(L.LightningDataModule):
-    def __init__(self, name, transform, tokenizer, batch_size, num_workers, characters):
+class WikipediaTextLineDataModule(pl.LightningDataModule):
+    def __init__(self, dataset_name, transform, tokenizer, batch_size, num_workers, characters):
         super().__init__()
 
-        self.name = name
+        self.dataset_name = dataset_name
         self.transform = transform
         self.tokenizer = tokenizer
         self.batch_size = batch_size
@@ -34,14 +25,14 @@ class WikipediaTextLineDataModule(L.LightningDataModule):
             tokenization_collate_fn, tokenizer=self.tokenizer)
 
     def prepare_data(self):
-        ds.load_dataset("wikipedia", self.name, split="train[:90%]")
-        ds.load_dataset("wikipedia", self.name, split="train[-10%:]")
+        ds.load_dataset("wikipedia", self.dataset_name, split="train[:90%]")
+        ds.load_dataset("wikipedia", self.dataset_name, split="train[-10%:]")
 
     def setup(self, stage=None):
         train_dataset = ds.load_dataset(
-            "wikipedia", self.name, split="train[:90%]")
+            "wikipedia", self.dataset_name, split="train[:90%]")
         val_dataset = ds.load_dataset(
-            "wikipedia", self.name, split="train[-10%:]")
+            "wikipedia", self.dataset_name, split="train[-10%:]")
 
         train_dataset = preprocess_dataset(
             train_dataset, text_column='text',
@@ -70,6 +61,7 @@ class WikipediaTextLineDataModule(L.LightningDataModule):
             collate_fn=self.collate_fn,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
+            pin_memory=True,
             shuffle=True,
         )
 
@@ -79,6 +71,7 @@ class WikipediaTextLineDataModule(L.LightningDataModule):
             collate_fn=self.collate_fn,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
+            pin_memory=True,
             shuffle=False,
         )
 

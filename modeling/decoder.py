@@ -8,7 +8,7 @@ class AutoregressiveTransformerDecoder(torch.nn.Module):
         heads=8,
         dropout=0.1,
         activation='gelu',
-        norm_first=False,
+        norm_first=True,
         # decoder stack config
         num_layers=4,
         # language model head config
@@ -39,13 +39,13 @@ class AutoregressiveTransformerDecoder(torch.nn.Module):
 
         self.tok_embed = torch.nn.Embedding(num_tokens, dim)
         self.pos_embed = torch.nn.Embedding(max_seq_len, dim)
-        self.embed_norm = torch.nn.LayerNorm(dim)
         self.embed_drop = torch.nn.Dropout(dropout)
 
         self.decs_stak = torch.nn.ModuleList([
             torch.nn.TransformerDecoderLayer(
                 d_model=dim,
                 nhead=heads,
+                dim_feedforward=dim * 4,
                 dropout=dropout,
                 activation=activation,
                 norm_first=norm_first,
@@ -53,6 +53,7 @@ class AutoregressiveTransformerDecoder(torch.nn.Module):
             ) for _ in range(num_layers)
         ])
 
+        self.final_norm = torch.nn.LayerNorm(dim, eps=1e-5, elementwise_affine=True)
         self.lang_mod_head = torch.nn.Linear(dim, num_tokens, bias=False)
 
         # some optimizations I found in the nanoGPT repo
@@ -61,11 +62,21 @@ class AutoregressiveTransformerDecoder(torch.nn.Module):
 
     def _init_weights(self, module):
         if isinstance(module, torch.nn.Linear):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.weight.size(-1) == self.dim * 4:
+                torch.nn.init.normal_(module.weight, mean=0.0, std=0.02/(2 * self.num_layers)**0.5)
+            else:
+                torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            
             if module.bias is not None:
                 torch.nn.init.zeros_(module.bias)
+            
         elif isinstance(module, torch.nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+        
+        elif isinstance(module, torch.nn.LayerNorm):
+            torch.nn.init.constant_(module.weight, 1.0)
+            if module.bias is not None:
+                module.bias = None
 
     def forward(
         self,
@@ -91,8 +102,7 @@ class AutoregressiveTransformerDecoder(torch.nn.Module):
 
         t_e = self.tok_embed(input_tokens)
         p_e = self.tok_embed(positions)
-        x = self.embed_norm(t_e + p_e)
-        x = self.embed_drop(x)
+        x = self.embed_drop(t_e + p_e)
 
         for dec_layer in self.decs_stak:
             x = dec_layer(
@@ -102,6 +112,8 @@ class AutoregressiveTransformerDecoder(torch.nn.Module):
                 memory_is_causal=False,
             )
 
+        x = self.final_norm(x)
+        
         if self.training:
             # if we are training, we predict all the tokens
             logits = self.lang_mod_head(x)

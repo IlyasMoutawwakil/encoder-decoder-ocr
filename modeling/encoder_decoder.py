@@ -76,9 +76,10 @@ if __name__ == '__main__':
 
     # create encoder
     swin_encoder = SwinTransformerEncoder(
-        img_size=(height, width),
-        patch_size=patch_size,
+        height=height,
+        width=width,
         in_chans=channels,
+        patch_size=patch_size,
         embed_dim=embed_dim,
         depths=depths,
         num_heads=num_heads,

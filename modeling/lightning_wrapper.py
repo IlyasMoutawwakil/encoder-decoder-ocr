@@ -1,15 +1,17 @@
+from timm.scheduler.cosine_lr import CosineLRScheduler
+from timm.optim import AdamW
+
 import pytorch_lightning as pl
 import evaluate
 import random
 import torch
 
 CER = evaluate.load("cer")
-ACC = evaluate.load("accuracy")
 
 
 class VisionEncoderLanguageDecoderWrapper(pl.LightningModule):
-    def __init__(self, model, tokenizer, optimizer_config, scheduler_config):
-        super().__init__()
+    def __init__(self, model, tokenizer, optimizer_config, scheduler_config, **kwargs):
+        super().__init__(**kwargs)
 
         self.model = model
         self.tokenizer = tokenizer
@@ -21,15 +23,13 @@ class VisionEncoderLanguageDecoderWrapper(pl.LightningModule):
 
     def configure_optimizers(self):
 
-        optimizer_class = self.optimizer_config['base_class']
-        optimizer = optimizer_class(
-            params=self.parameters(),
+        optimizer = self.optimizer_config['class'](
+            self.parameters(),
             **self.optimizer_config['params'],
         )
 
-        scheduler_class = self.scheduler_config['base_class']
-        scheduler = scheduler_class(
-            optimizer=optimizer,
+        scheduler = self.scheduler_config['class'](
+            optimizer,
             **self.scheduler_config['params'],
         )
 
@@ -98,11 +98,6 @@ class VisionEncoderLanguageDecoderWrapper(pl.LightningModule):
             pixels=pixels,
         )
 
-        val_acc = ACC.compute(
-            predictions=generated_tokens.flatten(),
-            references=tokens.flatten(),
-        )["accuracy"]
-
         generated_strings = self.tokenizer.batch_decode(
             generated_tokens, skip_special_tokens=True)
         true_strings = self.tokenizer.batch_decode(
@@ -118,7 +113,6 @@ class VisionEncoderLanguageDecoderWrapper(pl.LightningModule):
             'true_strings': true_strings,
             'generated_strings': generated_strings,
 
-            'val_acc': val_acc,
             'val_cer': val_cer,
         })
 
@@ -158,13 +152,8 @@ class VisionEncoderLanguageDecoderWrapper(pl.LightningModule):
             self.logger.experiment.add_image(
                 tag=f"right-cases", img_tensor=image, global_step=self.global_step, dataformats="CHW")
 
-        val_acc = sum([o['val_acc'] for o in self.outputs]) / len(self.outputs)
         val_cer = sum([o['val_cer'] for o in self.outputs]) / len(self.outputs)
 
-        self.log(
-            name='val_acc', value=val_acc, on_step=False,
-            on_epoch=True, prog_bar=True, logger=True
-        )
         self.log(
             name='val_cer', value=val_cer, on_step=False,
             on_epoch=True, prog_bar=True, logger=True
@@ -173,6 +162,5 @@ class VisionEncoderLanguageDecoderWrapper(pl.LightningModule):
         self.outputs = []
 
         return {
-            'val_acc': val_acc,
             'val_cer': val_cer,
         }
