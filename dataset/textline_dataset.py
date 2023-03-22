@@ -1,7 +1,7 @@
 try:
     from dataset.line_generator import generate_line
 except ImportError:
-    from dataset.line_generator import generate_line
+    from line_generator import generate_line
 
 from torchvision.datasets import VisionDataset
 import random
@@ -34,7 +34,7 @@ class TextLineDataset(VisionDataset):
             "text": text,
         }
 
-def get_random_cut(text, max_length=96):
+def get_random_cut(text, max_length):
     if len(text) <= max_length:
         return text
 
@@ -65,7 +65,7 @@ if __name__ == '__main__':
                 f"Ceci est un test ççç {i}", 
                 f"Ceci est un test ééé {i}"
             ],
-        } for i in range(100)
+        } for i in range(10000)
     ]
     
     # create a tokenizer
@@ -88,12 +88,18 @@ if __name__ == '__main__':
         transform=transform,
         model_max_length=dummy_tokenizer.model_max_length,
     )
+    
+    from torch.utils.data import DataLoader
+    loader = DataLoader(
+        dataset,
+        batch_size=32,
+        num_workers=8,
+        prefetch_factor=2 * (32 // 8),
+        shuffle=True,
+    )
 
-    # show the images and the text
-    for i in range(10):
-        # get a sample from the dataset
-        sample = dataset[i]
-        print(sample["text"])
-        plt.imshow(sample["pixels"].permute(1, 2, 0))
-        plt.show()
-        
+    import time
+    from tqdm import tqdm
+    for batch in tqdm(loader):
+        _ = batch
+        time.sleep(0.1)
