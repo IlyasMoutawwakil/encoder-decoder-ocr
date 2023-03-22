@@ -1,41 +1,55 @@
-from timm.scheduler.cosine_lr import CosineLRScheduler
-from timm.optim import AdamW
-
 import pytorch_lightning as pl
-import evaluate
+import torchmetrics
 import random
 import torch
 
-CER = evaluate.load("cer")
-
 
 class VisionEncoderLanguageDecoderWrapper(pl.LightningModule):
-    def __init__(self, model, tokenizer, optimizer_config, scheduler_config, **kwargs):
+    def __init__(
+        self,
+        tokenizer,
+        encoder_config,
+        decoder_config,
+        optimizer_config,
+        scheduler_config,
+        **kwargs
+    ):
         super().__init__(**kwargs)
 
-        self.model = model
         self.tokenizer = tokenizer
 
-        self.optimizer_config = optimizer_config
-        self.scheduler_config = scheduler_config
+        self.vision_encoder = encoder_config["class"](
+            **encoder_config["params"]
+        )
 
-        self.outputs = []
+        self.language_decoder = decoder_config["class"](
+            num_tokens=self.tokenizer.vocab_size,
+            max_seq_len=self.tokenizer.model_max_length,
+            **decoder_config["params"]
+        )
+
+        self.optimizer = optimizer_config['class'](
+            self.parameters(),
+            **optimizer_config['params'],
+        )
+        self.scheduler = scheduler_config['class'](
+            self.optimizer,
+            **scheduler_config['params'],
+        )
+
+        self.save_hyperparameters()
+        
+        self.cer = torchmetrics.CharErrorRate()
+        self.outputs = {
+            'pixels': [],
+            'true_strings': [],
+            'generated_strings': []
+        }
 
     def configure_optimizers(self):
+        return [self.optimizer], [{"scheduler": self.scheduler, "interval": "step"}]
 
-        optimizer = self.optimizer_config['class'](
-            self.parameters(),
-            **self.optimizer_config['params'],
-        )
-
-        scheduler = self.scheduler_config['class'](
-            optimizer,
-            **self.scheduler_config['params'],
-        )
-
-        return [optimizer], [{"scheduler": scheduler, "interval": "step"}]
-
-    def lr_scheduler_step(self, scheduler, *args, **kwargs):
+    def lr_scheduler_step(self, scheduler, metric):
         scheduler.step(self.global_step)
 
     def forward(
@@ -44,25 +58,47 @@ class VisionEncoderLanguageDecoderWrapper(pl.LightningModule):
         input_tokens=None,
         memory_logits=None,
     ):
-        return self.model(
-            pixels=pixels,
+
+        if pixels is None and memory_logits is None:
+            raise ValueError(
+                "Either pixels or memory logits should be provided")
+
+        elif memory_logits is None:
+            memory_logits = self.vision_encoder(
+                pixels=pixels,
+            )
+
+        output_logits = self.language_decoder(
             input_tokens=input_tokens,
             memory_logits=memory_logits,
         )
 
+        return memory_logits, output_logits
+
+    @torch.no_grad()
     def generate(
-        self,
-        seq_len=None,
-        pixels=None,
-        start_tokens=None,
-        memory_logits=None,
+            self,
+            seq_len=None,
+            pixels=None,
+            start_tokens=None,
+            memory_logits=None,
     ):
-        return self.model.generate(
+        if pixels is None and memory_logits is None:
+            raise ValueError(
+                "Either pixels or memory logits should be provided")
+
+        elif memory_logits is None:
+            memory_logits = self.vision_encoder(
+                pixels=pixels,
+            )
+
+        generated_tokens = self.language_decoder.generate(
             seq_len=seq_len,
-            pixels=pixels,
             start_tokens=start_tokens,
             memory_logits=memory_logits,
         )
+
+        return generated_tokens
 
     def training_step(self, batch, batch_num):
         pixels = batch['pixels']
@@ -103,64 +139,59 @@ class VisionEncoderLanguageDecoderWrapper(pl.LightningModule):
         true_strings = self.tokenizer.batch_decode(
             tokens, skip_special_tokens=True)
 
-        val_cer = CER.compute(
-            predictions=generated_strings,
-            references=true_strings,
+        self.cer(generated_tokens, tokens)
+        self.log(
+            name='val_cer', value=self.cer, on_step=False,
+            on_epoch=True, prog_bar=True, logger=True
         )
 
-        self.outputs.append({
-            'pixels': pixels,
-            'true_strings': true_strings,
-            'generated_strings': generated_strings,
-
-            'val_cer': val_cer,
-        })
+        self.outputs['pixels'].append(pixels)
+        self.outputs['true_strings'].append(true_strings)
+        self.outputs['generated_strings'].append(generated_strings)
 
     def on_validation_epoch_end(self):
 
         wrong_cases = []
         right_cases = []
 
-        for output in self.outputs:
-            pixels = output['pixels']
-            true_strings = output['true_strings']
-            generated_strings = output['generated_strings']
-
-            for i, (t, g) in enumerate(zip(true_strings, generated_strings)):
-                if t != g:
-                    wrong_cases.append((t, g))
-                else:
-                    right_cases.append(pixels[i])
+        for i in range(len(self.outputs['pixels'])):
+            if self.outputs['generated_strings'][i] != self.outputs['true_strings'][i]:
+                wrong_cases.append(
+                    (self.outputs['true_strings'][i],
+                     self.outputs['generated_strings'][i])
+                )
+            else:
+                right_cases.append(self.outputs['pixels'][i])
 
         if len(wrong_cases) > 9:
             wrong_cases = random.sample(wrong_cases, 9)
-        else:
-            pass
 
         if len(right_cases) > 9:
             right_cases = random.sample(right_cases, 9)
-        else:
-            pass
 
         custom_log = '\n\n'.join(
-            [f"- Ground Truth: {w1}\n- Prediction:&emsp;&ensp;{w2}" for w1, w2 in wrong_cases])
+            [
+                f"- Ground Truth: {w1}\n- Prediction:&emsp;&ensp;{w2}"
+                for w1, w2 in wrong_cases
+            ]
+        )
 
         self.logger.experiment.add_text(
-            tag='wrong-cases', text_string=custom_log, global_step=self.global_step)
+            tag='wrong-cases',
+            text_string=custom_log,
+            global_step=self.global_step
+        )
 
         for i, image in enumerate(right_cases):
             self.logger.experiment.add_image(
-                tag=f"right-cases", img_tensor=image, global_step=self.global_step, dataformats="CHW")
+                tag=f"right-cases",
+                img_tensor=image,
+                global_step=self.global_step,
+                dataformats="CHW"
+            )
 
-        val_cer = sum([o['val_cer'] for o in self.outputs]) / len(self.outputs)
-
-        self.log(
-            name='val_cer', value=val_cer, on_step=False,
-            on_epoch=True, prog_bar=True, logger=True
-        )
-
-        self.outputs = []
-
-        return {
-            'val_cer': val_cer,
+        self.outputs = {
+            'pixels': [],
+            'true_strings': [],
+            'generated_strings': []
         }
