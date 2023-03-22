@@ -17,19 +17,19 @@ if __name__ == "__main__":
         "--max_val_steps",
         type=int,
         help="The maximum number of validation steps",
-        default=100,
+        default=10,
     )
     parser.add_argument(
         "--num_workers",
         type=int,
         help="The number of threads to use " "for loading the data",
-        default=4,
+        default=8,
     )
     parser.add_argument(
         "--batch_size",
         type=int,
         help="The size of a minibatch",
-        default=4,
+        default=16,
     )
     
     parser.add_argument(

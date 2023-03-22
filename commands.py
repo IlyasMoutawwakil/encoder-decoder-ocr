@@ -3,7 +3,6 @@ import torch
 import pytorch_lightning as pl
 from tokenization.tokenizer import CharacterTokenizer
 from dataset.wikipedia_dataset import WikipediaTextLineDataModule
-from modeling.encoder_decoder import VisionEncoderLanguageDecoder
 from modeling.lightning_wrapper import VisionEncoderLanguageDecoderWrapper
 from torchvision.transforms import Compose, Resize, Grayscale, ToTensor, Normalize
 
@@ -12,15 +11,18 @@ from configs import CHARACTERS, DATASET_NAME, ENCODER_CONFIG, DECODER_CONFIG, OP
 
 def train_ocr(args):
     use_cuda = torch.cuda.is_available()
+    
     max_train_steps = args.max_train_steps
     max_val_steps = args.max_val_steps
-    language = args.language
-    characters = CHARACTERS[language]
-    model_max_length = args.model_max_length
 
-    dataset_name = DATASET_NAME[language]
     batch_size = args.batch_size
     num_workers = args.num_workers
+
+    language = args.language
+    model_max_length = args.model_max_length
+
+    characters = CHARACTERS[language]
+    dataset_name = DATASET_NAME[language]
 
     encoder_name = args.encoder_name
     encoder_config = ENCODER_CONFIG[encoder_name]
@@ -34,17 +36,31 @@ def train_ocr(args):
     scheduler_name = args.scheduler_name
     scheduler_config = SCHEDULER_CONFIG[scheduler_name]
 
+    experiment_name = f"ocr_{language}_{model_max_length}_{encoder_name}_{decoder_name}_{optimizer_name}_{scheduler_name}"
+
+    if os.path.exists(f"checkpoints/{experiment_name}/"):
+        print(
+            f"Experiment {experiment_name} already exists, resuming training")
+        ckpt_path = f"checkpoints/{experiment_name}/last.ckpt"
+    else:
+        print(f"Starting new experiment {experiment_name}")
+        ckpt_path = None
+
     tokenizer = CharacterTokenizer(
         characters=characters,
         model_max_length=model_max_length,
     )
+
     transform = Compose([
-        Resize((encoder_config["params"]["height"],
-               encoder_config["params"]["width"])),
+        Resize(
+            (encoder_config["params"]["height"],
+             encoder_config["params"]["width"])
+        ),
         Grayscale(),
         ToTensor(),
         Normalize((0.5,), (0.5,)),
     ])
+
     datamodule = WikipediaTextLineDataModule(
         dataset_name=dataset_name,
         transform=transform,
@@ -54,36 +70,10 @@ def train_ocr(args):
         characters=characters,
     )
 
-    visiion_encoder = encoder_config["class"](
-        **encoder_config["params"]
-    )
-
-    language_decoder = decoder_config["class"](
-        num_tokens=len(characters) + 4,
-        max_seq_len=model_max_length,
-        **decoder_config["params"]
-    )
-
-    visiion_encoder_language_decoder = VisionEncoderLanguageDecoder(
-        vision_encoder=visiion_encoder,
-        language_decoder=language_decoder,
-    )
-
-    # optimizer config
-
-    experiment_name = f"ocr_{language}_{encoder_name}_{decoder_name}_{optimizer_name}_{scheduler_name}_{model_max_length}"
-
-    if os.path.exists(f"checkpoints/{experiment_name}/"):
-        print(
-            f"Experiment {experiment_name} already exists, resuming training")
-        ckpt = torch.load(f"checkpoints/{experiment_name}/last.ckpt")
-    else:
-        print(f"Starting new experiment {experiment_name}")
-        ckpt = None
-
-    lightning_model = VisionEncoderLanguageDecoderWrapper(
-        model=visiion_encoder_language_decoder,
+    model = VisionEncoderLanguageDecoderWrapper(
         tokenizer=tokenizer,
+        encoder_config=encoder_config,
+        decoder_config=decoder_config,
         optimizer_config=optimizer_config,
         scheduler_config=scheduler_config,
     )
@@ -110,7 +100,7 @@ def train_ocr(args):
     )
 
     trainer = pl.Trainer(
-        accelerator="gpu" if use_cuda else 'cpu',
+        accelerator='gpu' if use_cuda else 'cpu',
 
         max_epochs=-1,
         log_every_n_steps=1,
@@ -125,7 +115,7 @@ def train_ocr(args):
     )
 
     trainer.fit(
-        model=lightning_model,
+        model=model,
         datamodule=datamodule,
-        ckpt_path=ckpt,
+        ckpt_path=ckpt_path,
     )
