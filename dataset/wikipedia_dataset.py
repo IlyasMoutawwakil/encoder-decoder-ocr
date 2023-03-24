@@ -12,17 +12,23 @@ import re
 
 
 class WikipediaTextLineDataModule(pl.LightningDataModule):
-    def __init__(self, dataset_name, transform, tokenizer, batch_size, num_workers, characters):
+    def __init__(self, dataset_name, tokenizer, batch_size, num_workers, allowed_characters, train_transform=None, val_transform=None):
         super().__init__()
 
         self.dataset_name = dataset_name
-        self.transform = transform
         self.tokenizer = tokenizer
+        
         self.batch_size = batch_size
         self.num_workers = num_workers
-        self.characters = characters
+        
+        self.allowed_characters = allowed_characters
         self.collate_fn = partial(
-            tokenization_collate_fn, tokenizer=self.tokenizer)
+            tokenization_collate_fn,
+            tokenizer=self.tokenizer
+        )
+        
+        self.train_transform = train_transform
+        self.val_transform = val_transform
 
     def prepare_data(self):
         ds.load_dataset("wikipedia", self.dataset_name, split="train[:10%]")
@@ -35,23 +41,25 @@ class WikipediaTextLineDataModule(pl.LightningDataModule):
             "wikipedia", self.dataset_name, split="train[-10%:]")
 
         train_dataset = preprocess_dataset(
-            train_dataset, text_column='text',
-            num_proc=self.num_workers, characters=self.characters
+            train_dataset,
+            num_proc=self.num_workers, 
+            characters=self.allowed_characters
         )
         val_dataset = preprocess_dataset(
-            val_dataset, text_column='text',
-            num_proc=self.num_workers, characters=self.characters
+            val_dataset,
+            num_proc=self.num_workers, 
+            characters=self.allowed_characters
         )
 
         self.train_dataset = TextLineDataset(
             dataset=train_dataset,
-            transform=self.transform,
+            transform=self.train_transform,
             model_max_length=self.tokenizer.model_max_length,
         )
 
         self.val_dataset = TextLineDataset(
             dataset=val_dataset,
-            transform=self.transform,
+            transform=self.val_transform,
             model_max_length=self.tokenizer.model_max_length,
         )
 
@@ -78,30 +86,30 @@ class WikipediaTextLineDataModule(pl.LightningDataModule):
         )
 
 
-def preprocess_dataset(dataset, text_column, num_proc, characters):
+def preprocess_dataset(dataset, num_proc, allowed_characters):
     dataset = dataset.map(
         lambda x: {
-            'lines': preprocess_paragraph(x[text_column], characters=characters)
+            'lines': preprocess_paragraph(x['text'], allowed_characters=allowed_characters)
         },
-        remove_columns=[text_column],
+        remove_columns=['text'],
         num_proc=num_proc,
     )
 
     return dataset
 
 
-def preprocess_paragraph(text, characters):
+def preprocess_paragraph(text, allowed_characters):
     lines = []
     for line in text.split('\n'):
-        line = preprocess_line(line, characters=characters)
+        line = preprocess_line(line, allowed_characters=allowed_characters)
         if len(line) > 0:
             lines.append(line)
     return lines
 
 
-def preprocess_line(text, characters):
+def preprocess_line(text, allowed_characters):
     # does the same as clean_df but for a single text
-    text = re.sub(f"[^{characters}]", '', text)
+    text = re.sub(f"[^{allowed_characters}]", '', text)
     text = re.sub('\s+', ' ', text)
     text = text.strip()
     return text
@@ -124,49 +132,3 @@ def tokenization_collate_fn(batch, tokenizer):
         "pixels": pixels,
         "tokens": tokens,
     }
-
-
-
-if __name__ == '__main__':
-    from torchvision.transforms import Compose, Resize, Grayscale, ToTensor, Normalize
-    from transformers import AutoTokenizer
-    
-    # create a tokenizer
-    dummy_tokenizer = AutoTokenizer.from_pretrained(
-        "distilbert-base-cased", 
-        model_max_length=100
-    )
-    
-    # create a transform
-    dummy_transform = Compose([
-        Resize((128, 640)),
-        Grayscale(),
-        ToTensor(),
-        Normalize((0.5,), (0.5,)),
-    ])
-
-    NUMBERS = "0123456789"
-    SPECIAL_CHARCTERS = """!"#$£€%§&½'°()*+,-./:;<=>?@[\]^_`{|}~“”‘’«» """
-
-    LATIN_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" + "abcdefghijklmnopqrstuvwxyz"
-    EXTRA_LATIN_ALPHABET = "ÀÂÆÇÉÈÊËÎÏÔŒÙÛÜŸ" + "àâæçéèêëîïôœùûüÿ"
-
-    # create a dataset
-    dataset = WikipediaTextLineDataModule(
-        dataset_name="20220301.fr",
-        transform=dummy_transform,
-        tokenizer=dummy_tokenizer,
-        batch_size=8,
-        num_workers=8,
-        characters=NUMBERS + SPECIAL_CHARCTERS + LATIN_ALPHABET + EXTRA_LATIN_ALPHABET,
-    )
-    
-    dataset.prepare_data()
-    dataset.setup()
-    
-    loader = dataset.train_dataloader()
-
-    import time
-    from tqdm import tqdm
-    for batch in tqdm(loader):
-        _ = batch

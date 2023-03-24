@@ -38,13 +38,8 @@ class VisionEncoderLanguageDecoderWrapper(pl.LightningModule):
         )
 
         self.save_hyperparameters()
-        
+
         self.cer = torchmetrics.CharErrorRate()
-        self.outputs = {
-            'pixels': [],
-            'true_strings': [],
-            'generated_strings': []
-        }
 
     def configure_optimizers(self):
         return [self.optimizer], [{"scheduler": self.scheduler, "interval": "step"}]
@@ -144,6 +139,13 @@ class VisionEncoderLanguageDecoderWrapper(pl.LightningModule):
             name='val_cer', value=self.cer, on_step=False,
             on_epoch=True, prog_bar=True, logger=True
         )
+
+        if batch_num == 0:
+            self.outputs = {
+                'pixels': [],
+                'true_strings': [],
+                'generated_strings': []
+            }
 
         self.outputs['pixels'].append(pixels)
         self.outputs['true_strings'].append(true_strings)
