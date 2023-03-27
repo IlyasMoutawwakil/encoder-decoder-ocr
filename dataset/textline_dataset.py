@@ -26,7 +26,7 @@ class TextLineDataset(VisionDataset):
             # minus two for the [BOS] and [EOS] tokens
         )
 
-        image = generate_line(line)
+        image, gen_params = generate_line(line)
         
         if self.transform is not None:
             pixels = self.transform(image)
@@ -36,6 +36,7 @@ class TextLineDataset(VisionDataset):
         return {
             "pixels": pixels,
             "text": text,
+            **gen_params,
         }
 
 

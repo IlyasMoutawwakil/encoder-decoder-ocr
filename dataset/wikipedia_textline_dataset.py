@@ -43,12 +43,12 @@ class WikipediaTextLineDataModule(pl.LightningDataModule):
         train_dataset = preprocess_dataset(
             train_dataset,
             num_proc=self.num_workers, 
-            characters=self.allowed_characters
+            allowed_characters=self.allowed_characters
         )
         val_dataset = preprocess_dataset(
             val_dataset,
             num_proc=self.num_workers, 
-            characters=self.allowed_characters
+            allowed_characters=self.allowed_characters
         )
 
         self.train_dataset = TextLineDataset(
