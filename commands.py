@@ -2,7 +2,7 @@ import os
 import torch
 import pytorch_lightning as pl
 from tokenization.tokenizer import CharacterTokenizer
-from dataset.wikipedia_dataset import WikipediaTextLineDataModule
+from dataset.wikipedia_textline_dataset import WikipediaTextLineDataModule
 from modeling.lightning_wrapper import VisionEncoderLanguageDecoderWrapper
 from torchvision.transforms import Compose, Resize, Grayscale, ToTensor, Normalize
 
@@ -51,7 +51,7 @@ def train_ocr(args):
         model_max_length=model_max_length,
     )
 
-    transform = Compose([
+    simple_transform = Compose([
         Resize(
             (encoder_config["params"]["height"],
              encoder_config["params"]["width"])
@@ -63,11 +63,12 @@ def train_ocr(args):
 
     datamodule = WikipediaTextLineDataModule(
         dataset_name=dataset_name,
-        transform=transform,
         tokenizer=tokenizer,
         batch_size=batch_size,
         num_workers=num_workers,
-        characters=characters,
+        allowed_characters=characters,
+        train_transform=simple_transform,
+        val_transform=simple_transform,
     )
 
     model = VisionEncoderLanguageDecoderWrapper(

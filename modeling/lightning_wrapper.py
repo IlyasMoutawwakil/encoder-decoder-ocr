@@ -15,6 +15,7 @@ class VisionEncoderLanguageDecoderWrapper(pl.LightningModule):
         **kwargs
     ):
         super().__init__(**kwargs)
+        self.save_hyperparameters()
 
         self.tokenizer = tokenizer
 
@@ -28,21 +29,24 @@ class VisionEncoderLanguageDecoderWrapper(pl.LightningModule):
             **decoder_config["params"]
         )
 
-        self.optimizer = optimizer_config['class'](
-            self.parameters(),
-            **optimizer_config['params'],
-        )
-        self.scheduler = scheduler_config['class'](
-            self.optimizer,
-            **scheduler_config['params'],
-        )
-
-        self.save_hyperparameters()
+        self.optimizer_config = optimizer_config
+        self.scheduler_config = scheduler_config
 
         self.cer = torchmetrics.CharErrorRate()
+        self.validation_step_outputs = []
 
     def configure_optimizers(self):
-        return [self.optimizer], [{"scheduler": self.scheduler, "interval": "step"}]
+
+        optimizer = self.optimizer_config['class'](
+            self.parameters(),
+            **self.optimizer_config['params'],
+        )
+        scheduler = self.scheduler_config['class'](
+            optimizer,
+            **self.scheduler_config['params'],
+        )
+
+        return [optimizer], [{"scheduler": scheduler, "interval": "step"}]
 
     def lr_scheduler_step(self, scheduler, metric):
         scheduler.step(self.global_step)
@@ -107,8 +111,8 @@ class VisionEncoderLanguageDecoderWrapper(pl.LightningModule):
         )
 
         train_loss = torch.nn.functional.cross_entropy(
-            output_logits.flatten(0, 1),
-            target_tokens.flatten(0, 1),
+            output_logits.flatten(0, 1),  # (batch_size * seq_len, vocab_size)
+            target_tokens.flatten(0, 1),  # (batch_size * seq_len)
             ignore_index=self.tokenizer.pad_token_id,
         )
 
@@ -140,30 +144,24 @@ class VisionEncoderLanguageDecoderWrapper(pl.LightningModule):
             on_epoch=True, prog_bar=True, logger=True
         )
 
-        if batch_num == 0:
-            self.outputs = {
-                'pixels': [],
-                'true_strings': [],
-                'generated_strings': []
-            }
-
-        self.outputs['pixels'].append(pixels)
-        self.outputs['true_strings'].append(true_strings)
-        self.outputs['generated_strings'].append(generated_strings)
+        self.validation_step_outputs.append({
+            'pixels': pixels,
+            'true_strings': true_strings,
+            'generated_strings': generated_strings
+        })
 
     def on_validation_epoch_end(self):
 
         wrong_cases = []
         right_cases = []
 
-        for i in range(len(self.outputs['pixels'])):
-            if self.outputs['generated_strings'][i] != self.outputs['true_strings'][i]:
-                wrong_cases.append(
-                    (self.outputs['true_strings'][i],
-                     self.outputs['generated_strings'][i])
-                )
-            else:
-                right_cases.append(self.outputs['pixels'][i])
+        for output in self.validation_step_outputs:
+            for i in range(output['pixels'].size(0)):
+                if output['true_strings'][i] == output['generated_strings'][i]:
+                    right_cases.append(output['pixels'][i])
+                else:
+                    wrong_cases.append(
+                        (output['true_strings'][i], output['generated_strings'][i]))
 
         if len(wrong_cases) > 9:
             wrong_cases = random.sample(wrong_cases, 9)
@@ -192,8 +190,4 @@ class VisionEncoderLanguageDecoderWrapper(pl.LightningModule):
                 dataformats="CHW"
             )
 
-        self.outputs = {
-            'pixels': [],
-            'true_strings': [],
-            'generated_strings': []
-        }
+        self.validation_step_outputs.clear()
